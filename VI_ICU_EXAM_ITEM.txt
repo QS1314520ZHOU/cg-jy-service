@@ -1,0 +1,20 @@
+db.VI_ICU_EXAM_ITEM.update({ _id: ObjectId("6a8baaad5809da479c361710") }, {    
+$set: {
+        "hisPid": "0003535805",
+        "testItemID": "20260824G0010033",
+        "examID": "20260824G0010033",
+        "reportID": "20260824G0010033",
+        "orderID": "20260824G0010033",
+        "itemCode": "5393",
+        "itemName": "*总蛋白",
+        "itemShortName": "*总蛋白",
+        "result": "55.1",
+        "almFlag": "↓",
+        "unit": "g/L",
+        "resultStatus": "↓",
+        "reflow": "65",
+        "refHigh": "85",
+        "authTime": ISODate("2026-08-24T08:34:19.000+08:00"),
+        "_class": "com.digixmed.icu.viform.ExamItem"
+    }
+})

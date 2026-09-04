@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>检验项目概览 - 重症ICU系统</title>
+    <script src="js/chart.umd.min.js"></script>
+    <script src="js/html2canvas.min.js"></script>
+    <script src="js/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .container {
+            max-width: 100%;
+            height: 100vh;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        /* 患者信息卡片 */
+        .patient-card {
+            background: white;
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #3498db;
+            flex-shrink: 0;
+        }
+        .patient-card h2 {
+            color: #2c3e50;
+            font-size: 17px;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .patient-card h2::before {
+            content: "👤";
+        }
+        .patient-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px 20px;
+        }
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .info-label {
+            font-size: 15px;
+            color: #666;
+            font-weight: 500;
+        }
+        .info-value {
+            font-size: 15px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        .info-value.highlight {
+            color: #e74c3c;
+            font-size: 14px;
+        }
+        /* 检验明细区域 */
+        .main-content {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .test-section {
+            background: white;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            flex: 0 0 38%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-left: 4px solid #3498db;
+            margin-right: 20px;
+            transition: all 0.3s;
+        }
+        .test-section h2 {
+            color: #2c3e50;
+            font-size: 17px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .test-section h2 > span {
+            text-align: left;
+        }
+        .test-section h2::before {
+            display: none;
+        }
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+            flex-shrink: 0;
+            flex-wrap: nowrap;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .filter-item label {
+            font-size: 15px;
+            color: #555;
+            font-weight: 500;
+        }
+        .filter-item select, .filter-item input {
+            padding: 8px 12px;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            font-size: 14px;
+            background: #f5f7fa;
+            transition: all 0.2s;
+            min-width: 120px;
+            max-width: 160px;
+        }
+        .filter-item select:focus, .filter-item input:focus {
+            outline: none;
+            border-color: #3498db;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        /* 检验列表（div布局） */
+        .test-table {
+            /* 跟随最宽内容撑开，保证行背景铺满整个横向滚动区域 */
+            width: max-content;
+            min-width: 100%;
+            font-size: 14px;
+        }
+        .test-table span {
+            white-space: nowrap;
+        }
+        .test-row {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            white-space: nowrap;
+            gap: 6px;
+            /* 明细行自带白底，避免透出 wrapper 灰色 */
+            background: #ffffff;
+        }
+        .test-row:hover {
+            background: #f8f9fa;
+        }
+        .test-row:nth-child(even) {
+            background: #fafbfc;
+        }
+        .test-row:nth-child(even):hover {
+            background: #f0f2f5;
+        }
+        /* 异常值颜色标注 */
+        .value-normal {
+            color: #27ae60;
+            font-weight: 600;
+        }
+        .value-high {
+            color: #e74c3c;
+            font-weight: 600;
+            background: #ffeaea;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .value-low {
+            color: #3498db;
+            font-weight: 600;
+            background: #eaf4fd;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .value-critical {
+            color: #c0392b;
+            font-weight: 700;
+            background: #f8d7da;
+            padding: 2px 6px;
+            border-radius: 3px;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .reference-range {
+            color: #999;
+            font-size: 13px;
+        }
+        .checkbox-col {
+            width: 40px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .checkbox-col input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #3498db;
+            vertical-align: middle;
+        }
+        /* 趋势图区域 */
+        .chart-section {
+            background: white;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-left: 4px solid #3498db;
+        }
+        /* 折叠按钮样式 */
+        /* 折叠状态 */
+        .test-section.collapsed {
+            flex: 0;
+            width: 0;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            border: none;
+            opacity: 0;
+        }
+        /* 折叠/展开按钮样式 */
+        .btn-toggle {
+            background: transparent;
+            border: 1px solid #dcdfe6;
+            color: #606266;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-toggle:hover {
+            border-color: #3498db;
+            color: #3498db;
+        }
+        .chart-section h2 {
+            color: #2c3e50;
+            font-size: 17px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .chart-section h2 > span {
+            text-align: left;
+        }
+        .chart-section h2::before {
+            display: none;
+        }
+        .chart-wrapper {
+            flex: 1;
+            display: flex;
+            gap: 15px;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .chart-container {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            background: #fafbfc;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .chart-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .y-axis-legend {
+            flex: 0 0 160px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        .y-axis-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid;
+            font-size: 13px;
+        }
+        .y-axis-item .axis-name {
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 13px;
+        }
+        .y-axis-item .axis-range {
+            color: #666;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .y-axis-item .axis-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .chart-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            gap: 10px;
+            font-size: 16px;
+        }
+        .chart-empty::before {
+            content: "📊";
+            font-size: 50px;
+            opacity: 0.5;
+        }
+        .selected-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+            flex-shrink: 0;
+        }
+        .tag {
+            background: #e8f4fc;
+            color: #2980b9;
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .tag .remove {
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .tag .remove:hover {
+            color: #e74c3c;
+        }
+        /* 按钮样式 */
+        .btn {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #dcdfe6;
+            color: #606266;
+        }
+        .btn-outline:hover {
+            border-color: #3498db;
+            color: #3498db;
+        }
+        /* 表格滚动 */
+        .table-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            min-height: 0;
+            /* 灰色底延伸到整个滚动区域（含横向滚动条右侧） */
+            background: #e8eef3;
+        }
+        .table-wrapper::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .table-wrapper::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        .table-wrapper::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        .table-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+        /* 分组折叠样式 */
+        .group-header {
+            background: #e8eef3;
+            cursor: pointer;
+            transition: background 0.2s;
+            padding: 10px 12px;
+            font-weight: 600;
+            color: #2c3e50;
+            white-space: nowrap;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+        /* 仅展开的分组表头吸顶，避免折叠时多个表头堆叠盖住前面的行 */
+        .group-header.expanded {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            border-bottom: 1px solid #d5e0ea;
+        }
+        .group-header:hover {
+            background: #d5e0ea;
+        }
+        .group-header .toggle-icon {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            text-align: center;
+            line-height: 18px;
+            background: #3498db;
+            color: white;
+            border-radius: 4px;
+            margin-right: 8px;
+            font-size: 11px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .group-header.expanded .toggle-icon {
+            transform: rotate(90deg);
+        }
+        .group-row {
+            display: none;
+            padding-left: 28px;
+            align-items: center;
+        }
+        .group-row.show {
+            display: flex;
+        }
+        .group-count {
+            background: #3498db;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 8px;
+            font-weight: normal;
+            flex-shrink: 0;
+        }
+        .group-badge {
+            background: #34495e;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-left: 10px;
+            flex-shrink: 0;
+        }
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            html, body {
+                height: auto;
+                overflow: auto;
+            }
+            .container {
+                height: auto;
+            }
+            .main-content {
+                flex-direction: column;
+                height: auto;
+            }
+            .test-section {
+                flex: none;
+                max-height: 350px;
+            }
+            .chart-section {
+                flex: none;
+                height: 350px;
+            }
+        }
+        @media (max-width: 768px) {
+            .patient-info-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .filter-group {
+                flex-direction: column;
+            }
+            .filter-item select, .filter-item input {
+                width: 100%;
+            }
+            .chart-wrapper {
+                flex-direction: column;
+            }
+            .y-axis-legend {
+                flex: none;
+                flex-direction: row;
+                flex-wrap: wrap;
+                max-height: 150px;
+            }
+            .y-axis-item {
+                flex: 0 0 calc(50% - 6px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 患者信息 -->
+        <div class="patient-card">
+            <h2>患者信息</h2>
+            <div class="patient-info-grid">
+                <div class="info-item">
+                    <span class="info-label">姓名</span>
+                    <span class="info-value">张三</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">住院号</span>
+                    <span class="info-value">20260818001</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">年龄/性别</span>
+                    <span class="info-value">65岁 / 男</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">科室</span>
+                    <span class="info-value">重症ICU</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">床号</span>
+                    <span class="info-value">ICU-03</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">入院日期</span>
+                    <span class="info-value">2026-08-15</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">诊断</span>
+                    <span class="info-value highlight">重症肺炎、呼吸衰竭</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">主管医生</span>
+                    <span class="info-value">李医生</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 左右布局：检验明细 + 趋势图 -->
+        <div class="main-content">
+            <!-- 左侧：检验明细 -->
+            <div class="test-section" id="testSection">
+                <h2>
+                    <span>检验明细</span>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-outline" onclick="toggleAll()">展开/折叠全部</button>
+                        <button class="btn-toggle" onclick="toggleTestSection()" title="收起检验明细">◀</button>
+                    </div>
+                </h2>
+
+                <div class="filter-group">
+                    <button class="btn btn-primary" onclick="filterByDays(3)">近3天</button>
+                    <button class="btn btn-outline" onclick="filterByDays(7)">近7天</button>
+                    <button class="btn btn-outline" onclick="filterByDays(0)">全部</button>
+                </div>
+
+                <div class="table-wrapper">
+                    <div class="test-table" id="testTableBody">
+                        <!-- 数据将通过JS动态填充 -->
+                    </div>
+                </div>
+
+                <div class="selected-tags" id="selectedTags"></div>
+            </div>
+
+            <!-- 右侧：趋势图 -->
+            <div class="chart-section" id="chartSection">
+                <h2>
+                    <span>
+                        <button class="btn-toggle" onclick="toggleTestSection()" id="expandBtn" style="display:none;" title="展开检验明细">▶</button>
+                        趋势分析
+                    </span>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-outline" onclick="exportToPDF()">打印/导出</button>
+                        <button class="btn btn-outline" onclick="clearChart()">清空</button>
+                    </div>
+                </h2>
+                <div class="chart-wrapper">
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                        <div class="chart-empty" id="chartEmpty">
+                            <span>请在左侧表格中勾选检验项目查看趋势</span>
+                        </div>
+                    </div>
+                    <div class="y-axis-legend" id="yAxisLegend">
+                        <!-- Y轴图例将通过JS动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ 握手机制 ============
+        let hostData = null; // 宿主回传的数据 { account, patient, token }
+        let currentPatientKey = null; // 当前患者唯一标识，用于判断是否需要清空勾选
+
+        // 向宿主发送就绪信号
+        function notifyReady() {
+            window.parent.postMessage({ type: 'SmartCareReady' }, '*');
+        }
+
+        // 获取患者唯一标识
+        function getPatientKey(patient) {
+            if (!patient) return '';
+            return String(patient.hisPid || patient.mrn || patient.id || patient.patientId || '');
+        }
+
+        // 监听宿主回传消息
+        window.addEventListener('message', function (e) {
+            if (e?.data?.type === 'SmartCare' && e.data.patient) {
+                var newPatientKey = getPatientKey(e.data.patient);
+                var isPatientChanged = (newPatientKey !== currentPatientKey);
+
+                hostData = {
+                    account: e.data.account,
+                    patient: e.data.patient,
+                    token: e.data.token
+                };
+                currentPatientKey = newPatientKey;
+
+                showConnectionStatus(true);
+
+                // 切换病人时清空已勾选的检验项及趋势图
+                if (isPatientChanged) {
+                    console.log('检测到病人切换，清空已勾选检验项');
+                    clearSelection();
+                }
+
+                // 拿到患者信息后更新页面
+                updatePatientInfo(hostData.patient);
+                // 请求真实检验数据
+                fetchTestData(hostData);
+            }
+        });
+
+        // 页面加载后发送就绪信号
+        document.addEventListener('DOMContentLoaded', function () {
+            notifyReady();
+            // 3秒内未收到宿主回传，显示空状态
+            setTimeout(function () {
+                if (!hostData) {
+                    console.warn('未收到宿主回传，等待宿主连接');
+                    showConnectionStatus(false);
+                    // 不加载数据，显示空状态
+                    renderTable([]);
+                }
+            }, 3000);
+        });
+
+        // 格式化ISO日期为 YYYY-MM-DD HH:mm:ss
+        function formatISODate(dateStr) {
+            if (!dateStr) return '--';
+            try {
+                var d = new Date(dateStr);
+                if (isNaN(d.getTime())) return dateStr;
+                var year = d.getFullYear();
+                var month = String(d.getMonth() + 1).padStart(2, '0');
+                var day = String(d.getDate()).padStart(2, '0');
+                var hours = String(d.getHours()).padStart(2, '0');
+                var minutes = String(d.getMinutes()).padStart(2, '0');
+                var seconds = String(d.getSeconds()).padStart(2, '0');
+                return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes + ':' + seconds;
+            } catch (e) {
+                return dateStr;
+            }
+        }
+
+        // 更新患者信息卡片
+        function updatePatientInfo(patient) {
+            if (!patient) return;
+            const grid = document.querySelector('.patient-info-grid');
+            if (!grid) return;
+
+            // 性别转换
+            var gender = '--';
+            if (patient.gender) {
+                var g = patient.gender.toLowerCase();
+                if (g === 'female' || g === '女') gender = '女';
+                else if (g === 'male' || g === '男') gender = '男';
+                else gender = patient.gender;
+            }
+
+            grid.innerHTML = `
+                <div class="info-item"><span class="info-label">姓名</span><span class="info-value">${patient.name || '--'}</span></div>
+                <div class="info-item"><span class="info-label">住院号</span><span class="info-value">${patient.mrn || '--'}</span></div>
+                <div class="info-item"><span class="info-label">年龄/性别</span><span class="info-value">${patient.age || '--'}${gender !== '--' ? ' / ' + gender : ''}</span></div>
+                <div class="info-item"><span class="info-label">科室</span><span class="info-value">${patient.dept || '--'}</span></div>
+                <div class="info-item"><span class="info-label">床号</span><span class="info-value">${patient.hisBed || '--'}</span></div>
+                <div class="info-item"><span class="info-label">转入日期</span><span class="info-value">${formatISODate(patient.icuAdmissionTime)}</span></div>
+                <div class="info-item"><span class="info-label">诊断</span><span class="info-value highlight">${patient.clinicalDiagnosis || '--'}</span></div>
+                <div class="info-item"><span class="info-label">主管医生</span><span class="info-value">${patient.bedPhysician || '--'}</span></div>
+            `;
+        }
+
+        // 请求真实检验数据
+        // 数据来源：DataCenter.VI_ICU_EXAM（检验大项） + VI_ICU_EXAM_ITEM（检验明细）
+        function fetchTestData(host) {
+            var baseUrl = window.location.origin;
+            var hisPid = host.patient?.hisPid || host.patient?.mrn || host.patient?.id;
+            var token = host.token;
+
+            if (!hisPid) {
+                console.warn('未获取到患者hisPid');
+                renderTable([]);
+                return;
+            }
+
+            // 请求检验数据接口：根据 hisPid 查询 VI_ICU_EXAM 和 VI_ICU_EXAM_ITEM
+            fetch(baseUrl + '/api/lab/items?hisPid=' + encodeURIComponent(hisPid), {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
+            .then(function (res) {
+                // 接口返回的数据结构：
+                // data: [{ reportID, name, authTime, items: [{ itemName, result, unit, resultStatus, reflow, refHigh }] }]
+                var list = [];
+                var examList = res.data || res || [];
+                var idx = 0;
+
+                examList.forEach(function (exam) {
+                    var reportTime = exam.authTime || exam.collectTime || exam.recvTime || '';
+                    var category = exam.name || exam.shortName || '检验'; // 检验大项名称作为类别
+
+                    // 明细项
+                    var items = exam.items || [];
+                    items.forEach(function (item) {
+                        idx++;
+                        // 生成参考范围显示
+                        var refRange = '-';
+                        var hasRefLow = item.reflow !== undefined && item.reflow !== null && item.reflow !== '';
+                        var hasRefHigh = item.refHigh !== undefined && item.refHigh !== null && item.refHigh !== '';
+                        if (hasRefLow && hasRefHigh) {
+                            refRange = item.reflow + '-' + item.refHigh;
+                        } else if (hasRefLow) {
+                            refRange = '≥' + item.reflow;
+                        } else if (hasRefHigh) {
+                            refRange = '≤' + item.refHigh;
+                        }
+
+                        // 处理结果值：保留原始字符串用于显示，尝试解析数字用于趋势图
+                        var resultStr = item.result || '';
+                        var resultNum = parseFloat(resultStr);
+                        // 如果无法解析为数字（如 "<0.04"），则保留原始字符串
+                        var displayValue = isNaN(resultNum) ? resultStr : resultNum;
+                        var chartValue = isNaN(resultNum) ? null : resultNum;
+
+                        list.push({
+                            id: idx,
+                            time: reportTime,
+                            category: category,
+                            name: item.itemName || item.itemShortName || '',
+                            value: displayValue,           // 用于显示（可能是字符串或数字）
+                            chartValue: chartValue,        // 用于趋势图（数字或null）
+                            unit: item.unit || '',
+                            refRange: refRange,
+                            reflow: item.reflow || '',
+                            refHigh: item.refHigh || '',
+                            resultStatus: item.resultStatus || '',
+                            almFlag: item.almFlag || '',
+                            status: judgeStatus(item)
+                        });
+                    });
+                });
+
+                testData = list;
+                // 用最新数据重建已勾选项（同一病人刷新时保留勾选，项目已不存在则移除）
+                rebuildSelectedItems();
+                renderTable(testData);
+                populateNameFilter();
+                initChart();
+                // initChart 会重建一个空图表，需按当前已选项重新绘制
+                if (selectedItems.size > 0) {
+                    updateSelectedTags();
+                    updateTrendChart();
+                }
+            })
+            .catch(function (err) {
+                console.error('获取检验数据失败:', err);
+                renderTable([]);
+            });
+        }
+
+        // 判断结果状态
+        // 数据来源：VI_ICU_EXAM_ITEM 的 resultStatus、reflow、refHigh
+        function judgeStatus(item) {
+            // 优先使用 resultStatus 判断（上下箭头）
+            var status = item.resultStatus || item.almFlag || '';
+            if (status === '↑') return 'high';
+            if (status === '↓') return 'low';
+            if (status === '↑↑') return 'critical';
+            if (status === '↓↓') return 'critical';
+
+            // 检查是否有参考范围
+            var hasRefLow = item.reflow !== undefined && item.reflow !== null && item.reflow !== '';
+            var hasRefHigh = item.refHigh !== undefined && item.refHigh !== null && item.refHigh !== '';
+
+            // 如果没有参考范围，返回 normal
+            if (!hasRefLow && !hasRefHigh) return 'normal';
+
+            // 根据数值和参考范围判断
+            var val = parseFloat(item.result ?? item.resultValue ?? 0);
+            var lo = hasRefLow ? parseFloat(item.reflow) : 0;
+            var hi = hasRefHigh ? parseFloat(item.refHigh) : 999;
+
+            if (isNaN(val)) return 'normal';
+            if (hasRefLow && hasRefHigh) {
+                if (val < lo * 0.7 || val > hi * 1.5) return 'critical';
+                if (val < lo) return 'low';
+                if (val > hi) return 'high';
+            } else if (hasRefLow) {
+                if (val < lo) return 'low';
+            } else if (hasRefHigh) {
+                if (val > hi) return 'high';
+            }
+            return 'normal';
+        }
+
+        // 请求某个检验项目的历史趋势数据
+        function fetchTrendData(host, itemName) {
+            if (!host) return Promise.resolve([]);
+            var baseUrl = window.location.origin;
+            var patientId = host.patient?.id || host.patient?.patientId;
+            var token = host.token;
+            return fetch(baseUrl + '/api/lab/trend?patientId=' + encodeURIComponent(patientId)
+                + '&itemName=' + encodeURIComponent(itemName), {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(function (res) { return res.ok ? res.json() : { data: [] }; })
+            .then(function (res) { return res.data || res || []; })
+            .catch(function () { return []; });
+        }
+
+        // 显示连接状态（不显示标签）
+        function showConnectionStatus(connected) {
+            // 连接状态不显示标签，仅用于内部逻辑判断
+            console.log(connected ? '已连接宿主' : '未连接宿主');
+        }
+
+        // 检验数据（从接口获取）
+        let testData = [];
+
+        // 已选中的检验项目
+        let selectedItems = new Map();
+
+        // 图表实例
+        let trendChart = null;
+
+        // 颜色配置
+        const chartColors = [
+            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b'
+        ];
+
+        // 检验项目阈值配置（用于Y轴范围和异常判断）
+        const testThresholds = {
+            '白细胞计数': { min: 3.5, max: 9.5, unit: '10^9/L' },
+            '红细胞计数': { min: 4.3, max: 5.8, unit: '10^12/L' },
+            '血红蛋白': { min: 130, max: 175, unit: 'g/L' },
+            '血小板计数': { min: 125, max: 350, unit: '10^9/L' },
+            '中性粒细胞比率': { min: 40, max: 75, unit: '%' },
+            '谷丙转氨酶': { min: 9, max: 50, unit: 'U/L' },
+            '谷草转氨酶': { min: 15, max: 40, unit: 'U/L' },
+            '肌酐': { min: 57, max: 111, unit: 'umol/L' },
+            '尿素氮': { min: 2.6, max: 7.5, unit: 'mmol/L' },
+            '血糖': { min: 3.9, max: 6.1, unit: 'mmol/L' },
+            '钾': { min: 3.5, max: 5.3, unit: 'mmol/L' },
+            '钠': { min: 137, max: 147, unit: 'mmol/L' },
+            '凝血酶原时间': { min: 11, max: 14.5, unit: 's' },
+            '活化部分凝血活酶时间': { min: 25.1, max: 36.5, unit: 's' },
+            '纤维蛋白原': { min: 2, max: 4, unit: 'g/L' },
+            'pH': { min: 7.35, max: 7.45, unit: '' },
+            '氧分压': { min: 80, max: 100, unit: 'mmHg' },
+            '二氧化碳分压': { min: 35, max: 45, unit: 'mmHg' },
+            '乳酸': { min: 0.5, max: 1.6, unit: 'mmol/L' }
+        };
+
+        // 初始化（模拟数据模式）
+        function initWithMockData() {
+            populateNameFilter();
+            renderTable(testData);
+            initChart();
+        }
+
+        // 填充检验名称下拉（已移除下拉框，保留函数避免报错）
+        function populateNameFilter() {
+            // 筛选栏已改为按钮形式，不再需要填充下拉框
+        }
+
+        // 筛选检验项目（保留原有功能，但不再使用）
+        function filterTests() {
+            renderTable(testData);
+        }
+
+        // 按天数筛选
+        function filterByDays(days) {
+            // 更新按钮样式
+            var buttons = document.querySelectorAll('.filter-group .btn');
+            buttons.forEach(function (btn) {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-outline');
+            });
+            event.target.classList.remove('btn-outline');
+            event.target.classList.add('btn-primary');
+
+            if (days === 0) {
+                // 全部
+                renderTable(testData);
+                return;
+            }
+
+            // 计算截止日期
+            var now = new Date();
+            var cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+            var filtered = testData.filter(function (item) {
+                var itemDate = new Date(item.time);
+                return itemDate >= cutoff;
+            });
+
+            renderTable(filtered);
+        }
+
+        // 渲染表格（按时间+类别双层分组，div布局）
+        function renderTable(data) {
+            const container = document.getElementById('testTableBody');
+
+            // 按时间分组，再按类别分组
+            const grouped = {};
+            data.forEach(item => {
+                if (!grouped[item.time]) {
+                    grouped[item.time] = {};
+                }
+                if (!grouped[item.time][item.category]) {
+                    grouped[item.time][item.category] = [];
+                }
+                grouped[item.time][item.category].push(item);
+            });
+
+            // 按时间倒序排列（最新在前）
+            const sortedTimes = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+
+            let html = '';
+            let groupIndex = 0;
+            sortedTimes.forEach(time => {
+                const categories = grouped[time];
+                const sortedCategories = Object.keys(categories);
+
+                // 格式化时间显示
+                const date = new Date(time);
+                const timeStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+
+                sortedCategories.forEach(category => {
+                    const items = categories[category];
+                    const groupId = `group-${groupIndex}`;
+                    groupIndex++;
+
+                    // 统计异常数量
+                    const abnormalCount = items.filter(item => item.status !== 'normal').length;
+                    const abnormalBadge = abnormalCount > 0 ?
+                        `<span style="background: #e74c3c; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">${abnormalCount}项异常</span>` : '';
+
+                    // 大项行（div）
+                    html += `
+                        <div class="group-header" onclick="toggleGroup('${groupId}')">
+                            <span class="toggle-icon">▶</span>
+                            <span>${timeStr}</span>
+                            <span class="group-badge">${category}</span>
+                            <span class="group-count">${items.length}项</span>
+                            ${abnormalBadge}
+                        </div>
+                    `;
+
+                    // 明细行（div）
+                    items.forEach(item => {
+                        const statusClass = `value-${item.status}`;
+                        const statusText = {
+                            'normal': '正常',
+                            'low': '↓',
+                            'high': '↑',
+                            'critical': '危急'
+                        }[item.status];
+                        const checked = selectedItems.has(item.name) ? 'checked' : '';
+
+                        html += `
+                            <div class="test-row group-row ${groupId}">
+                                <span class="checkbox-col">
+                                    <input type="checkbox" ${checked}
+                                        onchange="toggleTrendItem('${item.name}', this.checked)"
+                                        title="加入趋势图">
+                                </span>
+                                <span style="width:140px;">${item.name}</span>
+                                <span style="width:70px;"><span class="${statusClass}">${item.value}</span></span>
+                                <span style="width:60px;">${item.unit}</span>
+                                <span style="width:80px;"><span class="reference-range">${item.refRange}</span></span>
+                                <span><span class="${statusClass}">${statusText}</span></span>
+                            </div>
+                        `;
+                    });
+                });
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 切换分组展开/折叠
+        function toggleGroup(groupId) {
+            const rows = document.querySelectorAll(`.${groupId}`);
+            // 找到该分组的header（第一个row的前一个兄弟元素）
+            const header = rows.length > 0 ? rows[0].previousElementSibling : null;
+
+            if (header) header.classList.toggle('expanded');
+            rows.forEach(row => {
+                row.classList.toggle('show');
+            });
+        }
+
+        // 切换趋势图选中项
+        function toggleTrendItem(name, checked) {
+            if (checked) {
+                // 获取该检验项目的所有时间点数据
+                const items = testData.filter(item => item.name === name);
+                selectedItems.set(name, items);
+            } else {
+                selectedItems.delete(name);
+            }
+            updateTrendChart();
+            updateSelectedTags();
+        }
+
+        // 数据刷新后，用最新的 testData 重建已勾选项
+        // 同一病人刷新时保留勾选；检验项在新数据中已不存在则移除
+        function rebuildSelectedItems() {
+            if (selectedItems.size === 0) return;
+
+            const rebuilt = new Map();
+            selectedItems.forEach(function (oldItems, name) {
+                const fresh = testData.filter(item => item.name === name);
+                if (fresh.length > 0) {
+                    rebuilt.set(name, fresh);
+                }
+            });
+            selectedItems = rebuilt;
+        }
+
+        // 展开/折叠所有分组
+        let allExpanded = false;
+        function toggleAll() {
+            allExpanded = !allExpanded;
+            document.querySelectorAll('.group-header').forEach(header => {
+                header.classList.toggle('expanded', allExpanded);
+            });
+            document.querySelectorAll('.group-row').forEach(row => {
+                row.classList.toggle('show', allExpanded);
+            });
+        }
+
+        // 更新选中标签
+        function updateSelectedTags() {
+            const container = document.getElementById('selectedTags');
+            container.innerHTML = Array.from(selectedItems.keys()).map((name, index) => `
+                <span class="tag">
+                    <span style="background: ${chartColors[index % chartColors.length]}; width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                    ${name}
+                    <span class="remove" onclick="removeItem('${name}')">×</span>
+                </span>
+            `).join('');
+        }
+
+        // 移除选中项
+        function removeItem(name) {
+            selectedItems.delete(name);
+            // 取消表格中的勾选
+            const checkboxes = document.querySelectorAll('#testTableBody input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                if (cb.getAttribute('onchange').includes(name)) {
+                    cb.checked = false;
+                }
+            });
+            updateTrendChart();
+            updateSelectedTags();
+        }
+
+        // 初始化图表
+        function initChart() {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            // 如果已有图表实例，先销毁
+            if (trendChart) {
+                trendChart.destroy();
+                trendChart = null;
+            }
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false  // 使用自定义Y轴图例
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    // 从 selectedItems 获取实际数据
+                                    const items = selectedItems.get(label) || [];
+                                    const firstItem = items[0] || {};
+                                    const unit = firstItem.unit || '';
+
+                                    // 查找对应时间点的数据
+                                    const timeIndex = context.dataIndex;
+                                    const sortedTimes = Array.from(new Set(items.map(i => i.time))).sort();
+                                    const actualTime = sortedTimes[timeIndex];
+                                    const actualItem = items.find(i => i.time === actualTime) || {};
+
+                                    // 优先使用 resultStatus 判断
+                                    let status = '正常';
+                                    const resultStatus = actualItem.resultStatus || actualItem.almFlag || '';
+
+                                    if (resultStatus === '↑') {
+                                        status = '↑';
+                                    } else if (resultStatus === '↓') {
+                                        status = '↓';
+                                    } else if (resultStatus === '↑↑' || resultStatus === '↓↓') {
+                                        status = '危急';
+                                    } else {
+                                        // 没有明确的状态标志，根据参考范围判断
+                                        const reflow = actualItem.reflow || firstItem.reflow;
+                                        const refHigh = actualItem.refHigh || firstItem.refHigh;
+                                        const hasRefLow = reflow !== undefined && reflow !== null && reflow !== '';
+                                        const hasRefHigh = refHigh !== undefined && refHigh !== null && refHigh !== '';
+
+                                        if (hasRefLow || hasRefHigh) {
+                                            const lo = hasRefLow ? parseFloat(reflow) : 0;
+                                            const hi = hasRefHigh ? parseFloat(refHigh) : 999;
+
+                                            if (!isNaN(value)) {
+                                                if (hasRefLow && hasRefHigh) {
+                                                    if (value < lo * 0.7 || value > hi * 1.5) status = '危急';
+                                                    else if (value < lo) status = '↓';
+                                                    else if (value > hi) status = '↑';
+                                                } else if (hasRefLow) {
+                                                    if (value < lo) status = '↓';
+                                                } else if (hasRefHigh) {
+                                                    if (value > hi) status = '↑';
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    return `${label}: ${value} ${unit} [${status}]`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                        // Y轴将在updateTrendChart中动态生成
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // 更新趋势图（多Y轴）
+        function updateTrendChart() {
+            const chartEmpty = document.getElementById('chartEmpty');
+            const yAxisLegend = document.getElementById('yAxisLegend');
+
+            if (selectedItems.size === 0) {
+                trendChart.data.labels = [];
+                trendChart.data.datasets = [];
+                trendChart.options.scales = { x: { grid: { display: false } } };
+                trendChart.update();
+                chartEmpty.style.display = 'flex';
+                yAxisLegend.innerHTML = '';
+                return;
+            }
+
+            chartEmpty.style.display = 'none';
+
+            // 收集所有时间点并排序
+            const allTimes = new Set();
+            selectedItems.forEach((items) => {
+                items.forEach(item => allTimes.add(item.time));
+            });
+            const sortedTimes = Array.from(allTimes).sort();
+
+            // 构建Y轴和数据集
+            const scales = {
+                x: {
+                    grid: { display: false }
+                }
+            };
+
+            const datasets = Array.from(selectedItems.entries()).map(([name, items], index) => {
+                const data = sortedTimes.map(time => {
+                    const found = items.find(item => item.time === time);
+                    return found ? (found.chartValue !== undefined ? found.chartValue : found.value) : null;
+                });
+
+                const color = chartColors[index % chartColors.length];
+                const threshold = testThresholds[name];
+                const axisId = `y${index}`;
+
+                // 计算Y轴范围（基于数据和阈值）
+                const values = data.filter(v => v !== null);
+                let yMin = Math.min(...values);
+                let yMax = Math.max(...values);
+
+                // 扩展范围以包含阈值上下限
+                if (threshold) {
+                    yMin = Math.min(yMin, threshold.min * 0.8);
+                    yMax = Math.max(yMax, threshold.max * 1.2);
+                } else {
+                    const padding = (yMax - yMin) * 0.1 || 1;
+                    yMin = yMin - padding;
+                    yMax = yMax + padding;
+                }
+
+                // 创建Y轴配置
+                scales[axisId] = {
+                    type: 'linear',
+                    position: index % 2 === 0 ? 'left' : 'right',
+                    min: yMin,
+                    max: yMax,
+                    grid: {
+                        drawOnChartArea: index === 0,  // 只有第一个Y轴显示网格线
+                        color: 'rgba(0,0,0,0.05)'
+                    },
+                    ticks: {
+                        color: color,
+                        font: { size: 11 }
+                    },
+                    title: {
+                        display: false
+                    }
+                };
+
+                return {
+                    label: name,
+                    data: data,
+                    borderColor: color,
+                    backgroundColor: color + '20',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: color,
+                    pointBorderColor: color,
+                    fill: false,
+                    yAxisID: axisId,
+                    spanGaps: true  // 跨越空值连线
+                };
+            });
+
+            trendChart.data.labels = sortedTimes.map(time => {
+                const date = new Date(time);
+                return `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            });
+            trendChart.data.datasets = datasets;
+            trendChart.options.scales = scales;
+            trendChart.update();
+
+            // 更新Y轴图例
+            updateYAxisLegend(selectedItems, chartColors);
+        }
+
+        // 更新Y轴图例
+        function updateYAxisLegend(items, colors) {
+            const yAxisLegend = document.getElementById('yAxisLegend');
+            let html = '';
+
+            Array.from(items.entries()).forEach(([name, data], index) => {
+                const color = colors[index % colors.length];
+                const unit = data[0]?.unit || '';
+
+                // 计算当前值范围（使用chartValue，过滤掉无效值）
+                const values = data.map(item => item.chartValue !== undefined ? item.chartValue : item.value)
+                    .filter(v => v !== null && v !== undefined && !isNaN(v));
+                const min = values.length > 0 ? Math.min(...values) : null;
+                const max = values.length > 0 ? Math.max(...values) : null;
+
+                // 获取参考范围（从实际数据）
+                const firstItem = data[0] || {};
+                const refRange = firstItem.refRange || '-';
+
+                // 格式化范围显示
+                const minStr = min !== null ? min.toFixed(1) : '-';
+                const maxStr = max !== null ? max.toFixed(1) : '-';
+
+                html += `
+                    <div class="y-axis-item" style="border-left-color: ${color}">
+                        <div class="axis-color" style="background: ${color}"></div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div class="axis-name" title="${name}">${name}</div>
+                            <div class="axis-range">
+                                范围: ${minStr} - ${maxStr} ${unit}
+                                <br/>参考: ${refRange}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            yAxisLegend.innerHTML = html;
+        }
+
+        // 清空所有已勾选的检验项（切换病人时调用）
+        function clearSelection() {
+            selectedItems.clear();
+
+            // 取消表格中所有勾选状态
+            const checkboxes = document.querySelectorAll('#testTableBody input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = false);
+
+            updateSelectedTags();
+
+            // 图表可能尚未初始化（首次加载时）
+            if (trendChart) {
+                updateTrendChart();
+            }
+        }
+
+        // 清空图表
+        function clearChart() {
+            clearSelection();
+        }
+
+        // 刷新数据
+        function refreshData() {
+            if (hostData) {
+                fetchTestData(hostData);
+            } else {
+                notifyReady();
+                console.warn('未连接宿主，无法刷新数据');
+            }
+        }
+
+        // 切换检验明细栏显示/隐藏
+        function toggleTestSection() {
+            var testSection = document.getElementById('testSection');
+            var expandBtn = document.getElementById('expandBtn');
+
+            testSection.classList.toggle('collapsed');
+
+            // 切换展开按钮显示状态
+            if (testSection.classList.contains('collapsed')) {
+                expandBtn.style.display = 'inline-block';
+            } else {
+                expandBtn.style.display = 'none';
+            }
+
+            // 更新图表大小
+            if (trendChart) {
+                setTimeout(function() {
+                    trendChart.resize();
+                }, 300);
+            }
+        }
+
+        // 导出PDF
+        function exportToPDF() {
+            if (!trendChart) {
+                alert('暂无趋势数据可导出');
+                return;
+            }
+
+            // 获取Chart.js图表的base64图片
+            var chartImage = trendChart.toBase64Image('image/png', 1);
+
+            // 获取图表标题和图例信息
+            var title = '趋势分析';
+            var legendHtml = document.getElementById('yAxisLegend').innerHTML;
+
+            // 创建临时容器用于渲染
+            var container = document.createElement('div');
+            container.style.cssText = 'position:fixed;left:-9999px;top:0;padding:20px;background:white;width:1200px;';
+            container.innerHTML = `
+                <div style="text-align:center;margin-bottom:15px;">
+                    <h2 style="color:#2c3e50;font-size:18px;">${title}</h2>
+                </div>
+                <div style="display:flex;gap:15px;">
+                    <div style="flex:1;">
+                        <img src="${chartImage}" style="width:100%;height:auto;" />
+                    </div>
+                    <div style="width:150px;font-size:12px;">
+                        ${legendHtml}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(container);
+
+            html2canvas(container, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            }).then(function(canvas) {
+                document.body.removeChild(container);
+
+                // 创建PDF
+                var jsPDF = window.jspdf.jsPDF;
+                var pdf = new jsPDF('l', 'mm', 'a4'); // 横向
+
+                var imgData = canvas.toDataURL('image/png');
+                var pdfWidth = pdf.internal.pageSize.getWidth() - 20; // 留边距
+                var pdfHeight = pdf.internal.pageSize.getHeight() - 20;
+                var imgWidth = canvas.width;
+                var imgHeight = canvas.height;
+                var ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                var width = imgWidth * ratio;
+                var height = imgHeight * ratio;
+
+                var x = (pdf.internal.pageSize.getWidth() - width) / 2;
+                var y = 10;
+
+                pdf.addImage(imgData, 'PNG', x, y, width, height);
+                pdf.save('检验趋势分析.pdf');
+            }).catch(function(err) {
+                console.error('导出PDF失败:', err);
+                alert('导出PDF失败，请重试');
+                if (document.body.contains(container)) {
+                    document.body.removeChild(container);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+db.VI_ICU_EXAM.update({ _id: ObjectId("6a8baaac5809da479c3616fc") }, {    
+$set: {
+        "hisPid": "0003535805",
+        "reportID": "20260824G0010033",
+        "name": "IL-6|肝功（基础）|PCT|肾功2|心肌损伤|pro-BNP",
+        "shortName": "IL-6|肝功（基础）|PCT|肾功2|心肌损伤|pro-BNP",
+        "code": "2091329274438719244|2091329274438719245|2091329274438719246|2091329274438719247|2091329274438719248|2091329274438719249",
+        "orderID": "20260824G0010033",
+        "orderDept": "医学检验科",
+        "orderDeptCode": "8007",
+        "orderDoctor": "邓海燕",
+        "orderDoctorID": "041982",
+        "specID": "0033",
+        "collectTime": ISODate("2026-08-24T06:47:14.000+08:00"),
+        "recvTime": ISODate("2026-08-24T08:34:19.000+08:00"),
+        "authTime": ISODate("2026-08-24T08:34:19.000+08:00"),
+        "authDoctor": "邓海燕",
+        "patName": "谢恩国",
+        "gender": "男性",
+        "valid": true,
+        "_class": "com.digixmed.icu.viform.Exam"
+    }
+})

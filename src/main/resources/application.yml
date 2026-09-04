@@ -1,0 +1,17 @@
+server:
+  port: 10243
+
+spring:
+  mvc:
+    static-path-pattern: /**
+  resources:
+    static-locations: classpath:/static/
+  data:
+    mongodb:
+      uri: mongodb://data:Data%40dmin@10.35.4.11:32121/DataCenter
+
+# 呼吸机辅助呼吸视图（新菜单）使用的数据源：正式库 SmartCare
+# 认证库为 admin（authSource=admin），密码中的 * 已 URL 编码为 %2A
+smartcare:
+  mongodb:
+    uri: mongodb://admin:Dxm99%2A@10.35.4.11:32121/SmartCare?authSource=admin
