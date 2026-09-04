@@ -53,6 +53,49 @@
         }
         .toolbar select { min-width: 130px; }
         .toolbar input[type="date"] { min-width: 150px; }
+
+        /* 日期导航按钮样式 */
+        .date-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 0;
+        }
+        .date-nav-btn {
+            width: 34px;
+            height: 34px;
+            border: 1px solid #c9d4f0;
+            background: #fff;
+            color: #3f7ef7;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: all .15s;
+        }
+        .date-nav-btn:first-child {
+            border-radius: 6px 0 0 6px;
+            border-right: none;
+        }
+        .date-nav-btn:last-child {
+            border-radius: 0 6px 6px 0;
+            border-left: none;
+        }
+        .date-nav-btn:hover:not(:disabled) {
+            background: #eef4ff;
+            border-color: #3f7ef7;
+        }
+        .date-nav-btn:disabled {
+            color: #c0c4cc;
+            cursor: not-allowed;
+            background: #f5f7fa;
+        }
+        .date-nav input[type="date"] {
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+            min-width: 140px;
+        }
         .btn {
             height: 34px;
             padding: 0 18px;
@@ -151,7 +194,11 @@
         <!-- 工具栏 -->
         <div class="toolbar">
             <select id="deptSelect" title="科室"></select>
-            <input type="date" id="queryDate" title="查询日期">
+            <div class="date-nav">
+                <button class="date-nav-btn" id="prevDayBtn" onclick="changeDate(-1)" title="前一天">◀</button>
+                <input type="date" id="queryDate" title="查询日期" onchange="validateDate()">
+                <button class="date-nav-btn" id="nextDayBtn" onclick="changeDate(1)" title="后一天">▶</button>
+            </div>
             <button class="btn btn-primary" id="queryBtn" onclick="doQuery()">查询</button>
             <div class="spacer"></div>
             <button class="btn btn-export" onclick="doExport()">
@@ -193,7 +240,14 @@
         document.addEventListener('DOMContentLoaded', function () {
             // 日期默认当天；支持 URL 参数 ?date=（便于分享/书签）
             var qs = new URLSearchParams(location.search);
-            document.getElementById('queryDate').value = qs.get('date') || fmtToday();
+            var initDate = qs.get('date') || fmtToday();
+            document.getElementById('queryDate').value = initDate;
+
+            // 设置日期最大值为今天（禁止选择未来日期）
+            document.getElementById('queryDate').max = fmtToday();
+
+            // 更新导航按钮状态
+            updateNavButtons();
 
             loadDepartments(function () {
                 doQuery();
@@ -205,6 +259,87 @@
             var m = String(d.getMonth() + 1).padStart(2, '0');
             var day = String(d.getDate()).padStart(2, '0');
             return d.getFullYear() + '-' + m + '-' + day;
+        }
+
+        // ===== 日期导航功能 =====
+
+        /**
+         * 切换日期（+1天或-1天）
+         * @param offset 偏移量：-1表示前一天，+1表示后一天
+         */
+        function changeDate(offset) {
+            var dateInput = document.getElementById('queryDate');
+            var currentDate = new Date(dateInput.value + 'T00:00:00');
+            var today = new Date(fmtToday() + 'T00:00:00');
+
+            // 计算新日期
+            var newDate = new Date(currentDate);
+            newDate.setDate(newDate.getDate() + offset);
+
+            // 检查是否超过今天
+            if (newDate > today) {
+                return; // 不允许超过今天
+            }
+
+            // 检查是否为有效日期
+            if (isNaN(newDate.getTime())) {
+                return;
+            }
+
+            // 格式化为 YYYY-MM-DD
+            var m = String(newDate.getMonth() + 1).padStart(2, '0');
+            var day = String(newDate.getDate()).padStart(2, '0');
+            var dateStr = newDate.getFullYear() + '-' + m + '-' + day;
+
+            // 更新输入框
+            dateInput.value = dateStr;
+
+            // 更新按钮状态
+            updateNavButtons();
+
+            // 自动查询
+            doQuery();
+        }
+
+        /**
+         * 验证日期输入（手动输入时调用）
+         * 确保不超过今天
+         */
+        function validateDate() {
+            var dateInput = document.getElementById('queryDate');
+            var inputDate = new Date(dateInput.value + 'T00:00:00');
+            var today = new Date(fmtToday() + 'T00:00:00');
+
+            // 如果输入的日期超过今天，重置为今天
+            if (inputDate > today) {
+                dateInput.value = fmtToday();
+            }
+
+            // 如果输入的日期无效，重置为今天
+            if (isNaN(inputDate.getTime())) {
+                dateInput.value = fmtToday();
+            }
+
+            // 更新按钮状态
+            updateNavButtons();
+        }
+
+        /**
+         * 更新导航按钮的禁用状态
+         * 后一天按钮：如果当前日期是今天，则禁用
+         */
+        function updateNavButtons() {
+            var dateInput = document.getElementById('queryDate');
+            var nextBtn = document.getElementById('nextDayBtn');
+            var currentDate = new Date(dateInput.value + 'T00:00:00');
+            var today = new Date(fmtToday() + 'T00:00:00');
+
+            // 如果当前日期是今天或今天之后，禁用后一天按钮
+            // 使用日期比较（忽略时间）
+            var currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+            var todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+            nextBtn.disabled = currentDateOnly >= todayOnly;
         }
 
         // ===== 科室下拉（默认第一条，预留多条） =====
