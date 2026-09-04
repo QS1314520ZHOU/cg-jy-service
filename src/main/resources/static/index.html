@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>检验项目概览 - 重症ICU系统</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="js/chart.umd.min.js"></script>
+    <script src="js/html2canvas.min.js"></script>
+    <script src="js/jspdf.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -153,7 +153,9 @@
         }
         /* 检验列表（div布局） */
         .test-table {
-            width: 100%;
+            /* 跟随最宽内容撑开，保证行背景铺满整个横向滚动区域 */
+            width: max-content;
+            min-width: 100%;
             font-size: 14px;
         }
         .test-table span {
@@ -166,6 +168,8 @@
             border-bottom: 1px solid #f0f0f0;
             white-space: nowrap;
             gap: 6px;
+            /* 明细行自带白底，避免透出 wrapper 灰色 */
+            background: #ffffff;
         }
         .test-row:hover {
             background: #f8f9fa;
@@ -423,6 +427,8 @@
             border: 1px solid #e9ecef;
             border-radius: 10px;
             min-height: 0;
+            /* 灰色底延伸到整个滚动区域（含横向滚动条右侧） */
+            background: #e8eef3;
         }
         .table-wrapper::-webkit-scrollbar {
             width: 8px;
@@ -448,12 +454,18 @@
             font-weight: 600;
             color: #2c3e50;
             white-space: nowrap;
-            position: sticky;
-            top: 0;
-            z-index: 2;
+            position: relative;
+            z-index: 1;
             display: flex;
             align-items: center;
             font-size: 14px;
+        }
+        /* 仅展开的分组表头吸顶，避免折叠时多个表头堆叠盖住前面的行 */
+        .group-header.expanded {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            border-bottom: 1px solid #d5e0ea;
         }
         .group-header:hover {
             background: #d5e0ea;
@@ -648,21 +660,40 @@
     <script>
         // ============ 握手机制 ============
         let hostData = null; // 宿主回传的数据 { account, patient, token }
+        let currentPatientKey = null; // 当前患者唯一标识，用于判断是否需要清空勾选
 
         // 向宿主发送就绪信号
         function notifyReady() {
             window.parent.postMessage({ type: 'SmartCareReady' }, '*');
         }
 
+        // 获取患者唯一标识
+        function getPatientKey(patient) {
+            if (!patient) return '';
+            return String(patient.hisPid || patient.mrn || patient.id || patient.patientId || '');
+        }
+
         // 监听宿主回传消息
         window.addEventListener('message', function (e) {
             if (e?.data?.type === 'SmartCare' && e.data.patient) {
+                var newPatientKey = getPatientKey(e.data.patient);
+                var isPatientChanged = (newPatientKey !== currentPatientKey);
+
                 hostData = {
                     account: e.data.account,
                     patient: e.data.patient,
                     token: e.data.token
                 };
+                currentPatientKey = newPatientKey;
+
                 showConnectionStatus(true);
+
+                // 切换病人时清空已勾选的检验项及趋势图
+                if (isPatientChanged) {
+                    console.log('检测到病人切换，清空已勾选检验项');
+                    clearSelection();
+                }
+
                 // 拿到患者信息后更新页面
                 updatePatientInfo(hostData.patient);
                 // 请求真实检验数据
@@ -807,9 +838,16 @@
                 });
 
                 testData = list;
+                // 用最新数据重建已勾选项（同一病人刷新时保留勾选，项目已不存在则移除）
+                rebuildSelectedItems();
                 renderTable(testData);
                 populateNameFilter();
                 initChart();
+                // initChart 会重建一个空图表，需按当前已选项重新绘制
+                if (selectedItems.size > 0) {
+                    updateSelectedTags();
+                    updateTrendChart();
+                }
             })
             .catch(function (err) {
                 console.error('获取检验数据失败:', err);
@@ -1066,6 +1104,21 @@
             }
             updateTrendChart();
             updateSelectedTags();
+        }
+
+        // 数据刷新后，用最新的 testData 重建已勾选项
+        // 同一病人刷新时保留勾选；检验项在新数据中已不存在则移除
+        function rebuildSelectedItems() {
+            if (selectedItems.size === 0) return;
+
+            const rebuilt = new Map();
+            selectedItems.forEach(function (oldItems, name) {
+                const fresh = testData.filter(item => item.name === name);
+                if (fresh.length > 0) {
+                    rebuilt.set(name, fresh);
+                }
+            });
+            selectedItems = rebuilt;
         }
 
         // 展开/折叠所有分组
@@ -1346,13 +1399,25 @@
             yAxisLegend.innerHTML = html;
         }
 
-        // 清空图表
-        function clearChart() {
+        // 清空所有已勾选的检验项（切换病人时调用）
+        function clearSelection() {
             selectedItems.clear();
+
+            // 取消表格中所有勾选状态
             const checkboxes = document.querySelectorAll('#testTableBody input[type="checkbox"]');
             checkboxes.forEach(cb => cb.checked = false);
-            updateTrendChart();
+
             updateSelectedTags();
+
+            // 图表可能尚未初始化（首次加载时）
+            if (trendChart) {
+                updateTrendChart();
+            }
+        }
+
+        // 清空图表
+        function clearChart() {
+            clearSelection();
         }
 
         // 刷新数据

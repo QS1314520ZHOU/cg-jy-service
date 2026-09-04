@@ -1,5 +1,7 @@
 package com.cg.jy.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -18,8 +20,66 @@ import java.util.Map;
 @RequestMapping("/api/lab")
 public class LabController {
 
+    private static final Logger logger = LoggerFactory.getLogger(LabController.class);
+
     @Autowired
     private MongoTemplate mongoTemplate;
+
+    /**
+     * 测试数据库连接
+     */
+    @GetMapping("/test")
+    public Map<String, Object> testConnection() {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 检查数据库连接
+            result.put("status", "connected");
+            result.put("database", mongoTemplate.getDb().getName());
+
+            // 获取集合列表
+            java.util.Set<String> collections = mongoTemplate.getCollectionNames();
+            result.put("collections", collections);
+
+            // 查询 VI_ICU_EXAM 集合数量
+            if (collections.contains("VI_ICU_EXAM")) {
+                long count = mongoTemplate.count(new Query(), "VI_ICU_EXAM");
+                result.put("VI_ICU_EXAM_count", count);
+            }
+
+            // 查询 VI_ICU_EXAM_ITEM 集合数量
+            if (collections.contains("VI_ICU_EXAM_ITEM")) {
+                long count = mongoTemplate.count(new Query(), "VI_ICU_EXAM_ITEM");
+                result.put("VI_ICU_EXAM_ITEM_count", count);
+            }
+
+            logger.info("数据库测试连接成功, 数据库: {}", mongoTemplate.getDb().getName());
+        } catch (Exception e) {
+            result.put("status", "error");
+            result.put("message", e.getMessage());
+            logger.error("数据库连接测试失败", e);
+        }
+        return result;
+    }
+
+    /**
+     * 查看 VI_ICU_EXAM 中的一条样本数据
+     */
+    @GetMapping("/sample")
+    public Map<String, Object> getSampleData() {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 查询一条样本数据
+            Query query = new Query().limit(1);
+            List<Map> sample = mongoTemplate.find(query, Map.class, "VI_ICU_EXAM");
+            result.put("status", "success");
+            result.put("sample", sample);
+            result.put("message", "成功获取样本数据");
+        } catch (Exception e) {
+            result.put("status", "error");
+            result.put("message", e.getMessage());
+        }
+        return result;
+    }
 
     /**
      * 获取检验数据

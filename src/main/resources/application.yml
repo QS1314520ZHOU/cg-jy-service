@@ -9,3 +9,9 @@ spring:
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb://localhost:27017/DataCenter}
+
+# 呼吸机辅助呼吸视图（新菜单）使用的数据源：正式库 SmartCare
+# 认证库为 admin（authSource=admin），密码中的 * 已 URL 编码为 %2A
+smartcare:
+  mongodb:
+    uri: ${SMARTCARE_MONGODB_URI:mongodb://localhost:27017/SmartCare}
