@@ -6,23 +6,18 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.stereotype.Component;
 
 /**
- * 呼吸机辅助呼吸视图（及后续新表单菜单）使用的 SmartCare 数据源。
+ * SmartCare 数据源 —— Spring 管理的单例 Bean。
  *
- * 【重要】这里刻意**不**把 MongoClient / MongoTemplate 注册成 Spring bean，而是用普通对象持有。
- *
- * 原因：Spring Boot 的自动配置上有条件注解
- *   - MongoAutoConfiguration       : @ConditionalOnMissingBean(MongoClient.class)
- *   - MongoDataAutoConfiguration   : @ConditionalOnMissingBean(MongoTemplate.class)
- * 一旦容器中出现自定义的 MongoClient 或 MongoTemplate，自动配置就会整体跳过，
- * 主数据源（spring.data.mongodb.uri -> DataCenter）的 mongoTemplate 不再创建，
- * 检验页 LabController 的 @Autowired MongoTemplate 就会注入到 SmartCare 上，导致查错库。
- *
- * 因此本类只做连接封装，由使用方（VentController）自己创建和关闭，
- * 保证容器里始终只有自动配置的那一个 MongoTemplate。
+ * 【重要】MongoClient / MongoTemplate 是本类的 **私有字段**，
+ * Spring 不会把它们注册成容器 Bean，因此不会触发 MongoAutoConfiguration 的
+ * @ConditionalOnMissingBean 保护，主数据源（DataCenter）不受影响。
  */
+@Component
 public class SmartCareDataSource implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(SmartCareDataSource.class);
@@ -31,7 +26,8 @@ public class SmartCareDataSource implements AutoCloseable {
     private final MongoTemplate template;
     private final String databaseName;
 
-    public SmartCareDataSource(String uri) {
+    public SmartCareDataSource(
+            @Value("${smartcare.mongodb.uri:mongodb://localhost:27017/SmartCare}") String uri) {
         ConnectionString cs = new ConnectionString(uri);
         this.databaseName = cs.getDatabase() != null ? cs.getDatabase() : "SmartCare";
         this.client = MongoClients.create(

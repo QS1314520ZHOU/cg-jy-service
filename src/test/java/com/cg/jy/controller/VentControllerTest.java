@@ -1,5 +1,6 @@
 package com.cg.jy.controller;
 
+import com.cg.jy.config.SmartCareDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -35,14 +36,11 @@ public class VentControllerTest {
         mockDataCenterMongo = mock(MongoTemplate.class);
         mockSmartCareMongo = mock(MongoTemplate.class);
 
-        // 创建 controller 实例，使用 mock 的 MongoTemplate
-        // 由于构造器需要 SmartCareDataSource，我们使用反射来设置
+        // 创建 controller 实例，使用 mock 的 SmartCareDataSource
         try {
-            controller = new VentController(mockDataCenterMongo, "mongodb://localhost:27017/SmartCare");
-            // 使用反射设置 smartCareMongo
-            java.lang.reflect.Field field = VentController.class.getDeclaredField("smartCareMongo");
-            field.setAccessible(true);
-            field.set(controller, mockSmartCareMongo);
+            SmartCareDataSource mockSmartCareDataSource = mock(SmartCareDataSource.class);
+            when(mockSmartCareDataSource.template()).thenReturn(mockSmartCareMongo);
+            controller = new VentController(mockDataCenterMongo, mockSmartCareDataSource);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create VentController instance", e);
         }

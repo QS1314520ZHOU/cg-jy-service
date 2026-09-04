@@ -4,8 +4,6 @@ import com.cg.jy.config.SmartCareDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -13,8 +11,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import javax.annotation.PreDestroy;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -57,8 +53,7 @@ public class VentController {
             ".*(" + Pattern.quote("气管插管护理") + "|" + Pattern.quote("气管切开护理") + ").*"
     );
 
-    /** SmartCare 数据源（本视图专用） */
-    private final SmartCareDataSource smartCareDataSource;
+    /** SmartCare 数据源（Spring 管理的单例 Bean） */
     private final MongoTemplate smartCareMongo;
 
     /** DataCenter 主数据源（Spring Boot 自动配置） */
@@ -67,20 +62,14 @@ public class VentController {
     /**
      * 构造器注入
      *
-     * @param dataCenterMongo Spring Boot 自动配置的主数据源 MongoTemplate（DataCenter）
-     * @param smartCareUri    SmartCare MongoDB 连接 URI
+     * @param dataCenterMongo    Spring Boot 自动配置的主数据源 MongoTemplate（DataCenter）
+     * @param smartCareDataSource SmartCare 数据源（Spring 管理的单例 Bean）
      */
     @Autowired
     public VentController(MongoTemplate dataCenterMongo,
-                          @Value("${smartcare.mongodb.uri}") String smartCareUri) {
+                          SmartCareDataSource smartCareDataSource) {
         this.dataCenterMongo = dataCenterMongo;
-        this.smartCareDataSource = new SmartCareDataSource(smartCareUri);
         this.smartCareMongo = smartCareDataSource.template();
-    }
-
-    @PreDestroy
-    public void closeDataSource() {
-        smartCareDataSource.close();
     }
 
     // ============ 科室下拉 ============
